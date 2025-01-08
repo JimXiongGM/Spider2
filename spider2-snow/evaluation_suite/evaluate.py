@@ -165,13 +165,16 @@ def get_bigquery_sql_result(sql_query, is_save, save_dir=None, file_name="result
     return True, None
 
 
-def get_snowflake_sql_result(sql_query, is_save, save_dir=None, file_name="result.csv"):
+def get_snowflake_sql_result(sql_query, database_id, is_save, save_dir=None, file_name="result.csv"):
     """
     is_save = True, output a 'result.csv'
     if_save = False, output a string
     """
-    snowflake_credential = json.load(open("snowflake_credential.json"))
-    conn = snowflake.connector.connect(**snowflake_credential)
+    snowflake_credential = json.load(open('snowflake_credential.json'))
+    conn = snowflake.connector.connect(
+        database=database_id,
+        **snowflake_credential
+    )
     cursor = conn.cursor()
 
     try:
@@ -243,24 +246,23 @@ def evaluate_spider2sql(args):
     gold_ids = list(eval_standard_dict.keys())
     eval_ids = list(set(gold_ids).intersection(pred_ids))
     eval_ids = sorted(eval_ids)  # sorted, for reproduce result
-
-    def evaluate_single_id(
-        id, mode, pred_result_dir, gold_result_dir, gold_sql_dir, eval_standard_dict, spider2sql_metadata
-    ):
-        try:
-            error_info = None
-            score = 0
-            pred_sql_query = None
-
-            if mode == "sql":
-                pred_sql_query = open(os.path.join(pred_result_dir, f"{id}.sql")).read()
-                if id.startswith("bq") or id.startswith("ga"):
-                    exe_flag, dbms_error_info = get_bigquery_sql_result(
-                        pred_sql_query, True, "temp", f"{id}_pred.csv"
-                    )
-                    if exe_flag == False:
-                        score = 0
-                        error_info = dbms_error_info
+    output_results = []
+    
+    
+    for id in tqdm(eval_ids):
+        print(f">>>Evaluating {id}...")
+        error_info = None
+        if mode == "sql":
+            pred_sql_query = open(os.path.join(pred_result_dir, f"{id}.sql")).read()
+            if id.startswith("bq") or id.startswith("ga"):
+                exe_flag, dbms_error_info = get_bigquery_sql_result(pred_sql_query, True, "temp", f"{id}.csv")  
+                if exe_flag == False: 
+                    score = 0
+                    error_info = dbms_error_info
+                else:                    
+                    pred_pd = pd.read_csv(os.path.join("temp", f"{id}.csv"))  
+                    if '_' in id:
+                        pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
                     else:
                         pred_pd = pd.read_csv(os.path.join("temp", f"{id}_pred.csv"))
                         if "_" in id:
@@ -362,13 +364,16 @@ def evaluate_spider2sql(args):
                             if score == 0 and error_info is None:
                                 error_info = "Result Error"
 
-                elif id.startswith("sf"):
-                    exe_flag, dbms_error_info = get_snowflake_sql_result(
-                        pred_sql_query, True, "temp", f"{id}_pred.csv"
-                    )
-                    if exe_flag == False:
-                        score = 0
-                        error_info = dbms_error_info
+            elif id.startswith("local"):
+
+                exe_flag, dbms_error_info = get_sqlite_result(f"../resource/databases/spider2-localdb/{spider2sql_metadata.get(id)['db']}.sqlite", pred_sql_query, "temp", f"{id}.csv" )
+                if exe_flag == False:
+                    score = 0
+                    error_info = dbms_error_info
+                else:
+                    pred_pd = pd.read_csv(os.path.join("temp", f"{id}.csv"))  
+                    if '_' in id:
+                        pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
                     else:
                         pred_pd = pd.read_csv(os.path.join("temp", f"{id}_pred.csv"))
                         if "_" in id:
@@ -442,74 +447,76 @@ def evaluate_spider2sql(args):
                         )
                     elif len(csv_files) > 1:
                         gold_pds = [pd.read_csv(os.path.join(gold_result_dir, file)) for file in csv_files]
-                        score = compare_multi_pandas_table(
-                            pred_pd,
-                            gold_pds,
-                            eval_standard_dict.get(id)["condition_cols"],
-                            eval_standard_dict.get(id)["ignore_order"],
-                        )
-                except:
-                    print(f"{id} ERROR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                    error_info = "Execution Error"
+                        score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
+                        if score == 0 and error_info is None:
+                            error_info = 'Result Error'
+            elif id.startswith("sf"):
+                database_id = spider2sql_metadata[id]['db_id']
+                exe_flag, dbms_error_info = get_snowflake_sql_result(pred_sql_query, database_id, True, "temp", f"{id}.csv")  
+                if exe_flag == False: 
                     score = 0
-
-            return {
-                "instance_id": id,
+                    error_info = dbms_error_info
+                else:                    
+                    pred_pd = pd.read_csv(os.path.join("temp", f"{id}.csv"))  
+                    if '_' in id:
+                        pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
+                    else:
+                        pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
+                        
+                    all_files = os.listdir(gold_result_dir)
+                    csv_files = [file for file in all_files if pattern.match(file)]
+                    if len(csv_files) == 1:
+                        
+                        gold_pd = pd.read_csv(os.path.join(gold_result_dir, f"{id}.csv"))
+                        try:
+                            score = compare_pandas_table(pred_pd, gold_pd, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
+                        except Exception as e:
+                            print(f"An error occurred: {e}")
+                            score = 0
+                            error_info = 'Python Script Error:' + str(e)
+                        if score == 0 and error_info is None:
+                            error_info = 'Result Error'     
+                    elif len(csv_files) > 1:
+                        gold_pds = [pd.read_csv(os.path.join(gold_result_dir, file)) for file in csv_files]
+                        try:
+                            score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
+                        except:
+                            score = 0
+                        if score == 0 and error_info is None:
+                            error_info = 'Result Error'                        
+        elif mode == "exec_result":
+            try:
+                pred_pd = pd.read_csv(os.path.join(args.result_dir, f"{id}.csv"))
+                if '_' in id:
+                    pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
+                else:
+                    pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
+                all_files = os.listdir(gold_result_dir)
+                csv_files = [file for file in all_files if pattern.match(file)]
+                if len(csv_files) == 1:
+                    gold_pd = pd.read_csv(os.path.join(gold_result_dir, f"{id}.csv"))
+                    score = compare_pandas_table(pred_pd, gold_pd, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
+                elif len(csv_files) > 1:
+                    csv_files = sorted(csv_files)
+                    gold_pds = [pd.read_csv(os.path.join(gold_result_dir, file)) for file in csv_files]
+                    score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
+            except:
+                print("{id} ERROR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                score = 0
+        output_results.append(
+            {
+                "instance_id": id, 
                 "score": score,
                 "pred_sql": pred_sql_query if mode == "sql" else None,
                 "error_info": error_info,
             }
 
-        except Exception as e:
-            return {
-                "instance_id": id,
-                "score": 0,
-                "pred_sql": pred_sql_query if mode == "sql" else None,
-                "error_info": f"Unexpected error: {str(e)}",
-            }
+        
+    print({item['instance_id']: item['score'] for item in output_results})  
+    correct_examples = sum([item['score'] for item in output_results]) 
 
-    output_results = []
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = []
-        for id in eval_ids:
-            future = executor.submit(
-                evaluate_single_id,
-                id,
-                mode,
-                pred_result_dir,
-                gold_result_dir,
-                gold_sql_dir,
-                eval_standard_dict,
-                spider2sql_metadata,
-            )
-            futures.append(future)
-
-        for i, future in tqdm(enumerate(futures), total=len(futures), desc="Evaluating",ncols=100):
-            try:
-                result = future.result(timeout=180)  # 3 minutes timeout
-                output_results.append(result)
-            except TimeoutError:
-                output_results.append(
-                    {
-                        "instance_id": eval_ids[i],
-                        "score": 0,
-                        "pred_sql": None,
-                        "error_info": "Evaluation timeout (3 minutes)",
-                    }
-                )
-            except Exception as e:
-                output_results.append(
-                    {
-                        "instance_id": eval_ids[i],
-                        "score": 0,
-                        "pred_sql": None,
-                        "error_info": f"Thread error: {str(e)}",
-                    }
-                )
-
-    print({item["instance_id"]: item["score"] for item in output_results})
-    score = sum([item["score"] for item in output_results]) / len(output_results)
-    print(f"Final score: {score}")
+    print(f"Final score: {correct_examples / len(output_results)}, Correct examples: {correct_examples}, Total examples: {len(output_results)}")
+    print(f"Real score: {correct_examples / 547}, Correct examples: {correct_examples}, Total examples: 547")
 
     DEBUG_PREFIX = "SQL_DEBUG_" if args.is_sql_debug else ""
     with open(os.path.join(args.result_dir, f"{DEBUG_PREFIX}eval_result_with_error_infos.json"), "w") as f:
