@@ -1,36 +1,37 @@
-import signal
-import os
 import hashlib
-import shutil
-from typing import Dict
-import os
-import pandas as pd
 import json
+import os
+import shutil
+import signal
 import xml.etree.ElementTree as ET
+from typing import Dict
+
+import pandas as pd
 import yaml
 
-
 TIMEOUT_DURATION = 25
+
 
 def is_file_valid(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     try:
-        if ext == '.csv':
+        if ext == ".csv":
             pd.read_csv(file_path)
-        elif ext == '.json':
-            with open(file_path, 'r') as f:
+        elif ext == ".json":
+            with open(file_path, "r") as f:
                 json.load(f)
-        elif ext == '.xml':
+        elif ext == ".xml":
             ET.parse(file_path)
-        elif ext == '.yaml' or ext == '.yml':
-            with open(file_path, 'r') as f:
+        elif ext == ".yaml" or ext == ".yml":
+            with open(file_path, "r") as f:
                 yaml.safe_load(f)
         else:
             return True, None
         return True, None
     except Exception as e:
         return False, str(e)
-        
+
+
 class timeout:
     def __init__(self, seconds=TIMEOUT_DURATION, error_message="Timeout"):
         self.seconds = seconds
@@ -56,14 +57,14 @@ def delete_files_in_folder(folder_path):
                 os.remove(file_path)
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path)
-        
+
+
 def create_folder_if_not_exists(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
+
 def calculate_sha256(file_path):
-    with open(file_path, 'rb') as f:
+    with open(file_path, "rb") as f:
         file_data = f.read()
         return hashlib.sha256(file_data).hexdigest()
-
-

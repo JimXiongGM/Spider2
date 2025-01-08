@@ -138,3 +138,11 @@ spider2-lite/resource/databases/spider2-localdb
 credentials/
 **/credentials/
 
+spider2-lite/baselines
+temp/
+*.json
+*.csv
+*.jsonl
+*.zip
+ju-*.ipynb
+.*.json

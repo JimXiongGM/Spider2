@@ -1,14 +1,9 @@
 # import debugpy; debugpy.connect(('127.0.0.1', 5688))
-import os
-import json
-import re
 import os.path as osp
 import argparse
-import sys
 
-proj_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
-sys.path = [osp.join(proj_dir, '../')] + sys.path
-from utils.post_utils import main_postprocess
+proj_dir = "./"
+from baseline_utils.post_utils import main_postprocess
 
 
 if __name__ == "__main__":

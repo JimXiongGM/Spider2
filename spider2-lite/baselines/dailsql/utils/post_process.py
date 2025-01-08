@@ -1,8 +1,5 @@
 import asyncio
-import json
 import os
-import os.path as osp
-import sys
 import random
 import re
 import sqlite3
@@ -14,10 +11,9 @@ import sqlparse
 import tqdm
 from google.cloud import bigquery
 
-proj_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
-sys.path = [osp.join(proj_dir, '../')] + sys.path
-from utils.post_utils import spider2_postprocess_single_sql
+from baseline_utils.post_utils import spider2_postprocess_single_sql
 
+proj_dir = "./"
 
 # process the case of duplicated output of ChatGPT and GPT4 for SQL Representation with QA or SQLONLY Organization
 def process_duplication(sql):
@@ -155,7 +151,7 @@ async def exec_on_bigquery_(query: str, instance_id: str) -> Tuple[str, Any]:
 
     post_query = spider2_postprocess_single_sql(query, instance_id)
 
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../evaluation_suite/credentials/bigquery_credential.json"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "evaluation_suite/credentials/bigquery_credential.json"
     client = bigquery.Client()
     try:
         query_job = client.query(post_query)

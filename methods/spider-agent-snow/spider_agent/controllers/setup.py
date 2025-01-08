@@ -1,17 +1,14 @@
 import json
-import os
-
-
-import shutil
 import logging
-from typing import Any, Union, Optional
-from typing import Dict, List
-import uuid
-import requests
-import docker
+import os
 import shutil
-from spider_agent import configs
+import uuid
+from typing import Any, Dict, List, Optional, Union
 
+import docker
+import requests
+
+from spider_agent import configs
 
 FILE_PATH = os.path.dirname(os.path.abspath(__file__))
 logger = logging.getLogger("spider_agent.setup")
@@ -21,8 +18,8 @@ class SetupController:
     def __init__(self, container, cache_dir):
         self.cache_dir = cache_dir
         self.container = container
-        self.mnt_dir = [mount['Source'] for mount in container.attrs['Mounts']][0]
-        
+        self.mnt_dir = [mount["Source"] for mount in container.attrs["Mounts"]][0]
+
     def setup(self, config: List[Dict[str, Any]]):
         """
         Args:
@@ -34,7 +31,7 @@ class SetupController:
                     "parameters": dick like {str, Any} providing the keyword
                       parameters
                 }
-        """  
+        """
         for cfg in config:
             config_type: str = cfg["type"]
             parameters: Dict[str, Any] = cfg["parameters"]
@@ -51,11 +48,10 @@ class SetupController:
                 # customized setup functions
                 setup_function: str = "{:}_setup".format(config_type)
                 config_function = getattr(configs, setup_function, None)
-                assert config_function is not None, f'Setup controller cannot find function {setup_function}'
+                assert config_function is not None, f"Setup controller cannot find function {setup_function}"
                 config_function(self, **parameters)
-                logger.info("SETUP: %s(%s)", setup_function, str(parameters))    
-    
-    
+                logger.info("SETUP: %s(%s)", setup_function, str(parameters))
+
     def _download_setup(self, files: List[Dict[str, str]]):
         """
         Args:
@@ -69,9 +65,9 @@ class SetupController:
             url: str = f["url"]
             path: str = f["path"]
 
-            cache_path: str = os.path.join(self.cache_dir, "{:}_{:}".format(
-                uuid.uuid5(uuid.NAMESPACE_URL, url),
-                os.path.basename(path)))
+            cache_path: str = os.path.join(
+                self.cache_dir, "{:}_{:}".format(uuid.uuid5(uuid.NAMESPACE_URL, url), os.path.basename(path))
+            )
             if not url or not path:
                 raise Exception(f"Setup Download - Invalid URL ({url}) or path ({path}).")
 
@@ -84,7 +80,7 @@ class SetupController:
                         response = requests.get(url, stream=True, timeout=10)
                         response.raise_for_status()
 
-                        with open(cache_path, 'wb') as f:
+                        with open(cache_path, "wb") as f:
                             for chunk in response.iter_content(chunk_size=8192):
                                 if chunk:
                                     f.write(chunk)
@@ -94,13 +90,12 @@ class SetupController:
 
                     except requests.RequestException as e:
                         logger.error(
-                            f"Failed to download {url} caused by {e}. Retrying... ({max_retries - i - 1} attempts left)")
+                            f"Failed to download {url} caused by {e}. Retrying... ({max_retries - i - 1} attempts left)"
+                        )
                 if not downloaded:
                     raise requests.RequestException(f"Failed to download {url}. No retries left. Error: {e}")
             shutil.copy(cache_path, os.path.join(self.mnt_dir, os.path.basename(path)))
 
-        
-        
     def _execute_setup(self, command: str):
         """
         Args:

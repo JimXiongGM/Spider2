@@ -50,7 +50,7 @@ class CosineSimilarExampleSelector(BasicExampleSelector):
         # self.SELECT_MODEL = "sentence-transformers/bert-base-nli-mean-tokens"
 
         from sentence_transformers import SentenceTransformer
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(self.train_questions)
 
         
@@ -86,7 +86,7 @@ class EuclideanDistanceExampleSelector(BasicExampleSelector):
         self.SELECT_MODEL = "all-mpnet-base-v2"
 
         from sentence_transformers import SentenceTransformer
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(self.train_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -120,7 +120,7 @@ class EuclideanDistanceThresholdExampleSelector(BasicExampleSelector):
         self.threshold = 0.85
 
         from sentence_transformers import SentenceTransformer
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(self.train_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -160,7 +160,7 @@ class EuclideanDistanceSkeletonSimilarThresholdSelector(BasicExampleSelector):
 
         from sentence_transformers import SentenceTransformer
         train_mask_questions = mask_question_with_schema_linking(self.train_json, mask_tag=self.mask_token, value_tag=self.value_token)
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(train_mask_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -211,7 +211,7 @@ class EuclideanDistanceQuestionMaskSelector(BasicExampleSelector):
 
         from sentence_transformers import SentenceTransformer
         train_mask_questions = mask_question_with_schema_linking(self.train_json, mask_tag=self.mask_token, value_tag=self.value_token)
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(train_mask_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -245,7 +245,7 @@ class EuclideanDistancePreSkeletonSimilarThresholdSelector(BasicExampleSelector)
         self.threshold = 0.85
 
         from sentence_transformers import SentenceTransformer
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(self.train_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -292,7 +292,7 @@ class EuclideanDistancePreSkeletonSimilarPlusSelector(BasicExampleSelector):
         self.SELECT_MODEL = "all-mpnet-base-v2"
 
         from sentence_transformers import SentenceTransformer
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(self.train_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -329,7 +329,7 @@ class EuclideanDistanceQuestionMaskPreSkeletonSimilarThresholdSelector(BasicExam
 
         from sentence_transformers import SentenceTransformer
         train_mask_questions = mask_question_with_schema_linking(self.train_json, mask_tag=self.mask_token, value_tag=self.value_token)
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(train_mask_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):
@@ -381,7 +381,7 @@ class EuclideanDistanceQuestionMaskPreSkeletonSimilarThresholdShiftSelector(Basi
 
         from sentence_transformers import SentenceTransformer
         train_mask_questions = mask_question_with_schema_linking(self.train_json, mask_tag=self.mask_token, value_tag=self.value_token)
-        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cpu")
+        self.bert_model = SentenceTransformer(self.SELECT_MODEL, device="cuda")
         self.train_embeddings = self.bert_model.encode(train_mask_questions)
 
     def get_examples(self, target, num_example, cross_domain=False):

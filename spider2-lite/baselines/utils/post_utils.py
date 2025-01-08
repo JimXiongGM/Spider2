@@ -86,10 +86,9 @@ def main_postprocess(root_path, dev_json_path, table_json_path, method):
         dbid_to_tables = {entry["db_id"]: entry["table_names_original"] for entry in table_json}
     else:
         raise NotImplementedError
+    
     dbid_to_projDataset = {entry['db_id']: entry['table_to_projDataset'] for entry in table_json}
-
     instanceid_to_dbid = {entry["instance_id"]: entry["db_id"] for entry in dev_json}
-
 
     new_root_path = root_path + "-postprocessed"
     os.makedirs(new_root_path, exist_ok=True)

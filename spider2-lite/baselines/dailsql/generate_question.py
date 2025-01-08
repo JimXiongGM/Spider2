@@ -4,34 +4,44 @@ Generate questions for LLMs and save it as a task
 """
 import argparse
 import os
-import os.path as osp
-import sys
 import json
 from prompt.prompt_builder import prompt_factory
 from utils.data_builder import Spider2CForDailSQL_Dataset
 from utils.enums import REPR_TYPE, EXAMPLE_TYPE, SELECTOR_TYPE, LLM
 from utils.utils import cost_estimate
-import multiprocessing as mp
 from multiprocessing import Pool
 from tqdm import tqdm
+import concurrent.futures
 
-proj_dir = osp.dirname(osp.abspath(__file__))
-
-sys.path.append("./")
+proj_dir = "./"
 
 
 def process_question(question_json, args, cross_domain):
+    import signal
+    
+    def timeout_handler(signum, frame):
+        raise TimeoutError("处理超时")
+        
+    # 设置3分钟超时
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(180)
+    
     try:
-        # assert 1 != 1, "This is a test"
         question_format = prompt.format(target=question_json,
                                         max_seq_len=args.max_seq_len,
                                         max_ans_len=args.max_ans_len,
                                         scope_factor=args.scope_factor,
                                         cross_domain=cross_domain, 
                                         args=args)
-        question_format['instance_id'] = question_json['instance_id'] 
+        question_format['instance_id'] = question_json['instance_id']
+        signal.alarm(0)  # 取消超时
         return question_format, question_format["prompt_tokens"]
+    except TimeoutError:
+        print("处理超时,重新启动")
+        # 重新执行该函数
+        return process_question(question_json, args, cross_domain)
     except Exception as e:
+        signal.alarm(0)  # 取消超时
         error = f"Error occured in process_question: {str(e)}"
         print(error)
         return error
@@ -100,8 +110,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_plan", action="store_true", default=False)
 
     parser.add_argument("--comment", type=str, default="")
-    parser.add_argument("--processes", type=int, default=120)
-
+    parser.add_argument("--processes", type=int, default=4)
 
     args = parser.parse_args()
 
@@ -124,8 +133,13 @@ if __name__ == '__main__':
 
     question_loader = getattr(data, func_name)()
 
+    # with tqdm(total=len(question_loader),ncols=100,desc="Processing questions") as pbar:
+    #     for question_json in question_loader:
+    #         result = process_question(question_json, args, cross_domain)
+    #         collect_result(result)
+
     with Pool(processes=args.processes) as pool:
-        with tqdm(total=len(question_loader)) as pbar:
+        with tqdm(total=len(question_loader),ncols=100,desc="Processing questions") as pbar:
             for question_json in question_loader:
                 pool.apply_async(
                     process_question, 
@@ -134,7 +148,8 @@ if __name__ == '__main__':
                 )
             pool.close()
             pool.join() 
-    
+
+
     # cost estimated
     token_cnt = float(token_cnt) / len(questions)
     print(f"Total {len(questions)} questions, {token_cnt} tokens per prompt, {token_cnt / len(questions)} tokens per question")

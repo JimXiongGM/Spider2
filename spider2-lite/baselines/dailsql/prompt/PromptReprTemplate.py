@@ -1,12 +1,11 @@
-from utils.utils import get_sql_for_database, get_sql_for_database_from_tables_json, get_sample_rows_for_database_from_tables_json
+from utils.utils import get_sql_for_database_from_tables_json, get_sample_rows_for_database_from_tables_json
 import json
-import os
 import os.path as osp
 import tiktoken
 
 
-proj_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
-
+# proj_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
+proj_dir = "./"
 
 class BasicPrompt(object):
     def __init__(self, *args, **kwargs):
@@ -24,6 +23,7 @@ class BasicPrompt(object):
     def get_extra_info(self, db_id):
         return None
 
+tables_json = None
 
 class SQLPrompt(BasicPrompt):
 
@@ -44,7 +44,9 @@ class SQLPrompt(BasicPrompt):
     template_question_optimized = "/* Generate a {} SQL statement to answer the following question, ensuring that the syntax and functions are appropriate for {}. No explanation is required and don't use ```sql```: {} */"
         
     def format_question(self, example: dict, args):
-        tables_json = json.load(open(osp.join(proj_dir, f'preprocessed_data/{args.dev}/tables_preprocessed.json'), 'r', encoding='utf-8'))
+        global tables_json
+        if tables_json is None:
+            tables_json = json.load(open(osp.join(proj_dir, f'preprocessed_data/{args.dev}/tables_preprocessed.json'), 'r', encoding='utf-8'))
         sqls = get_sql_for_database_from_tables_json(example["db_id"], tables_json, use_column_desc=args.use_column_desc)
 
         prompt_info = self.template_info.format("\n\n".join(sqls))
@@ -83,7 +85,7 @@ class SQLPrompt(BasicPrompt):
             print(example["instance_id"])
         if args.use_external_knowledge and example['external_knowledge'] is not None:
             print(example['external_knowledge'])
-            with open(osp.join(proj_dir, '../../resource/documents', example['external_knowledge']), "r", encoding="utf-8") as file:
+            with open(osp.join(proj_dir, 'resource/documents', example['external_knowledge']), "r", encoding="utf-8") as file:
                 content = file.read()
             new = self.external_knowledge_info.format(content)
             if check_length(prompt_components, new):
@@ -107,7 +109,7 @@ class SQLPrompt(BasicPrompt):
                 print("Plan too long, skip. length: ", len(new))
 
         if args.use_few_shot:  # put few-shot examples at the end. for fair comparison 
-            with open(osp.join(proj_dir, f'../utils/{args.n_shots}-shot-{dialect1}.txt'), 'r', encoding='utf-8') as file:
+            with open(osp.join(proj_dir, f'baseline_utils/{args.n_shots}-shot-{dialect1}.txt'), 'r', encoding='utf-8') as file:
                 new = file.read()
             if check_length(prompt_components, new):
                 prompt_components.append(new)

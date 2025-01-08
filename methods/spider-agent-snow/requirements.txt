@@ -4,7 +4,7 @@ transformers
 openai
 gymnasium
 rich
-openai==1.31.0
+openai #==1.31.0
 langchain
 chromadb
 tiktoken
@@ -20,7 +20,7 @@ llama-cpp-python
 tenacity
 accelerate
 optimum
-auto-gptq
+# auto-gptq
 rpyc
 mysql-connector-python
 google-cloud-bigquery
@@ -29,3 +29,4 @@ psycopg2
 psycopg2-binary
 google.generativeai
 plotly
+snowflake-connector-python

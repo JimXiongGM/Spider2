@@ -3,10 +3,7 @@ import json
 import re
 import pandas as pd
 import math
-import duckdb
-from typing import List, Union
 import os
-import os.path as osp
 import pandas as pd
 import argparse
 from google.cloud import bigquery
@@ -14,9 +11,31 @@ import shutil
 import sqlite3
 from tqdm import tqdm
 import snowflake.connector
-import logging
-
 import sys
+from google.oauth2 import service_account
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import signal
+
+def timeout_decorator(seconds):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            def handler(signum, frame):
+                raise TimeoutError(f"Function {func.__name__} timed out after {seconds} seconds")
+            
+            # Set the timeout handler
+            signal.signal(signal.SIGALRM, handler)
+            signal.alarm(seconds)
+            
+            try:
+                result = func(*args, **kwargs)
+            finally:
+                # Disable the alarm
+                signal.alarm(0)
+            return result
+        return wrapper
+    return decorator
+
 class TeeOutput:
     def __init__(self, filename):
         self.console = sys.stdout
@@ -70,8 +89,6 @@ def compare_multi_pandas_table(pred, multi_gold, multi_condition_cols=[], multi_
         if compare_pandas_table(pred, gold, multi_condition_cols[i], multi_ignore_order[i]):
             return 1
     return 0
-        
-    
 
 
 def compare_pandas_table(pred, gold, condition_cols=[], ignore_order=False):
@@ -130,8 +147,7 @@ def get_bigquery_sql_result(sql_query, is_save, save_dir=None, file_name="result
     if_save = False, output a string
     """
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "bigquery_credential.json"
-    client = bigquery.Client()
-
+    client = bigquery.Client(credentials=service_account.Credentials.from_service_account_file('evaluation_suite/bigquery_credential.json'))
 
     try:
         query_job = client.query(sql_query)
@@ -142,8 +158,6 @@ def get_bigquery_sql_result(sql_query, is_save, save_dir=None, file_name="result
         global TOTAL_GB_PROCESSED
         TOTAL_GB_PROCESSED += gb_processed
         print(f"Total GB processed: {TOTAL_GB_PROCESSED:.5f} GB")
-        
-         
         
         if results.empty:
             print("No data found for the specified query.")
@@ -167,7 +181,7 @@ def get_snowflake_sql_result(sql_query, is_save, save_dir=None, file_name="resul
     is_save = True, output a 'result.csv'
     if_save = False, output a string
     """
-    snowflake_credential = json.load(open('snowflake_credential.json'))
+    snowflake_credential = json.load(open('evaluation_suite/snowflake_credential.json'))
     conn = snowflake.connector.connect(
         **snowflake_credential
     )
@@ -219,39 +233,40 @@ def get_sqlite_result(db_path, query, save_dir=None, file_name="result.csv", chu
 
 
 def evaluate_spider2sql(args):
-    mode = args.mode
     gold_sql_dir = os.path.join(args.gold_dir, "sql")
     gold_result_dir = os.path.join(args.gold_dir, "exec_result")
-
-    pred_result_dir = args.result_dir
     
     eval_standard_dict = load_jsonl_to_dict(os.path.join(args.gold_dir, "spider2lite_eval.jsonl"))
-    spider2sql_metadata = load_jsonl_to_dict("../spider2-lite.jsonl")
-    
-
+    spider2sql_metadata = load_jsonl_to_dict("spider2-lite.jsonl")
         
     gold_ids = []
     pred_ids = []
-    if mode == "sql":
+    if args.mode == "sql":
         for file in os.listdir(args.result_dir):
             if file.endswith(".sql"):
                 pred_ids.append(file.split(".")[0])
-    elif mode == 'exec_result':
+    elif args.mode == 'exec_result':
         for file in os.listdir(args.result_dir):
             if file.endswith(".csv"):
                 pred_ids.append(file.split(".")[0])
-                       
+
+    # skip the bigquery data.
+    # pred_ids = [id for id in pred_ids if not id.startswith("bq") and not id.startswith("ga")]
+    # pred_ids = [id for id in pred_ids if not id.startswith("sf")]
+
     gold_ids = list(eval_standard_dict.keys())
     eval_ids = list(set(gold_ids).intersection(pred_ids))
+
+    assert len(eval_ids) > 0, f"No evaluation ids found, check your result_dir: {args.result_dir} and gold_dir: {args.gold_dir}"
+
     eval_ids = sorted(eval_ids)  # sorted, for reproduce result
     output_results = []
-    
-    
-    for id in tqdm(eval_ids):
-        print(f">>>Evaluating {id}...")
+
+    # @timeout_decorator
+    def evaluate_single_id(id, args, eval_standard_dict, spider2sql_metadata, gold_sql_dir, gold_result_dir):
         error_info = None
-        if mode == "sql":
-            pred_sql_query = open(os.path.join(pred_result_dir, f"{id}.sql")).read()
+        if args.mode == "sql":
+            pred_sql_query = open(os.path.join(args.result_dir, f"{id}.sql")).read()
             if id.startswith("bq") or id.startswith("ga"):
                 exe_flag, dbms_error_info = get_bigquery_sql_result(pred_sql_query, True, "temp", f"{id}_pred.csv")  
                 if exe_flag == False: 
@@ -264,7 +279,6 @@ def evaluate_spider2sql(args):
                     else:
                         pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
                         
-                    
                     if 'temporal' in eval_standard_dict[id] and eval_standard_dict[id]['temporal']:
                         gold_sql_query = open(os.path.join(gold_sql_dir, f"{id}.sql")).read()
                         exe_flag, dbms_error_info = get_bigquery_sql_result(gold_sql_query, True, "temp", f"{id}_gold.csv")
@@ -294,8 +308,7 @@ def evaluate_spider2sql(args):
                                 error_info = 'Result Error'
 
             elif id.startswith("local"):
-
-                exe_flag, dbms_error_info = get_sqlite_result(f"../resource/databases/spider2-localdb/{spider2sql_metadata.get(id)['db']}.sqlite", pred_sql_query, "temp", f"{id}_pred.csv" )
+                exe_flag, dbms_error_info = get_sqlite_result(f"resource/databases/spider2-localdb/{spider2sql_metadata.get(id)['db']}.sqlite", pred_sql_query, "temp", f"{id}_pred.csv" )
                 if exe_flag == False:
                     score = 0
                     error_info = dbms_error_info
@@ -323,6 +336,7 @@ def evaluate_spider2sql(args):
                         score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
                         if score == 0 and error_info is None:
                             error_info = 'Result Error'
+            
             elif id.startswith("sf"):
                 exe_flag, dbms_error_info = get_snowflake_sql_result(pred_sql_query, True, "temp", f"{id}_pred.csv")  
                 if exe_flag == False: 
@@ -362,8 +376,8 @@ def evaluate_spider2sql(args):
                             score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
                             if score == 0 and error_info is None:
                                 error_info = 'Result Error'                        
-        elif mode == "exec_result":
-
+        
+        elif args.mode == "exec_result":
             pred_pd = pd.read_csv(os.path.join(args.result_dir, f"{id}.csv"))
             if '_' in id:
                 pattern = re.compile(rf'^{re.escape(id)}(_[a-z])?\.csv$')
@@ -378,17 +392,48 @@ def evaluate_spider2sql(args):
             elif len(csv_files) > 1:
                 gold_pds = [pd.read_csv(os.path.join(gold_result_dir, file)) for file in csv_files]
                 score = compare_multi_pandas_table(pred_pd, gold_pds, eval_standard_dict.get(id)['condition_cols'], eval_standard_dict.get(id)['ignore_order'])
-        
-        output_results.append(
-            {
-                "instance_id": id, 
-                "score": score,
-                "pred_sql": pred_sql_query if mode == "sql" else None,
-                "error_info": error_info
-            }
-        )
 
-        
+        return {
+            "instance_id": id,
+            "score": score,
+            "pred_sql": pred_sql_query if args.mode == "sql" else None,
+            "error_info": error_info
+        }
+
+    # debug
+    # for id in eval_ids:
+    #     evaluate_single_id(id, args, eval_standard_dict, spider2sql_metadata, gold_sql_dir, gold_result_dir)
+    # exit()
+
+    # Use ThreadPoolExecutor for parallel processing
+    output_results = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_id = {
+            executor.submit(
+                evaluate_single_id, 
+                id, 
+                args, 
+                eval_standard_dict, 
+                spider2sql_metadata, 
+                gold_sql_dir, 
+                gold_result_dir
+            ): id for id in eval_ids
+        }
+
+        for future in tqdm(as_completed(future_to_id, timeout=180), total=len(eval_ids), desc="Evaluating", ncols=100):
+            id = future_to_id[future]
+            try:
+                result = future.result(timeout=180)
+                output_results.append(result)
+            except Exception as e:
+                print(f"Error processing {id}: {str(e)}")
+                output_results.append({
+                    "instance_id": id,
+                    "score": 0,
+                    "pred_sql": None if args.mode == "exec_result" else open(os.path.join(args.result_dir, f"{id}.sql")).read(),
+                    "error_info": f"Thread Error: {str(e)}"
+                })
+    
     print({item['instance_id']: item['score'] for item in output_results})      
     score = sum([item['score'] for item in output_results]) / len(output_results)
     print(f"Final score: {score}")
@@ -396,7 +441,7 @@ def evaluate_spider2sql(args):
 
     DEBUG_PREFIX = "SQL_DEBUG_" if args.is_sql_debug else ""
     with open(
-        osp.join(args.result_dir, f"../{DEBUG_PREFIX}eval_result_with_error_infos.json"), 'w'
+        os.path.join(args.result_dir, f"{DEBUG_PREFIX}eval_result_with_error_infos.json"), 'w'
     ) as f:
         json.dump(output_results, f, indent=4)
 
@@ -408,7 +453,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run evaluations for NLP models.")
     parser.add_argument("--mode", type=str, choices=["sql", "exec_result"], default='sql', help="Mode of submission results")
     parser.add_argument("--result_dir", type=str, default="spider2sql_example_submit_result", help="Result directory")
-    parser.add_argument("--gold_dir", type=str, default="gold", help="Result directory")
+    parser.add_argument("--gold_dir", type=str, default="evaluation_suite/gold", help="Result directory")
     parser.add_argument("--is_sql_debug", action="store_true", default=False)
     args = parser.parse_args()
     
@@ -416,5 +461,4 @@ if __name__ == "__main__":
         shutil.rmtree("temp")
     os.makedirs("temp")
 
-    
     evaluate_spider2sql(args)

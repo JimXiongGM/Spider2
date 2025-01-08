@@ -2,23 +2,26 @@ import json.decoder
 
 import openai
 from utils.enums import LLM
-import time
-import os
+# import time
+# import os
 
 # os.environ["http_proxy"]="http://127.0.0.1:61081"
 # os.environ["https_proxy"]="http://127.0.0.1:61081"
 
 
-def init_chatgpt(OPENAI_API_KEY, OPENAI_GROUP_ID, model):
-    # if model == LLM.TONG_YI_QIAN_WEN:
-    #     import dashscope
-    #     dashscope.api_key = OPENAI_API_KEY
-    # else:
-    #     openai.api_key = OPENAI_API_KEY
-    #     openai.organization = OPENAI_GROUP_ID
-    openai.api_key = OPENAI_API_KEY
-    openai.organization = OPENAI_GROUP_ID
+# def init_chatgpt(OPENAI_API_KEY, OPENAI_GROUP_ID, model):
+#     # if model == LLM.TONG_YI_QIAN_WEN:
+#     #     import dashscope
+#     #     dashscope.api_key = OPENAI_API_KEY
+#     # else:
+#     #     openai.api_key = OPENAI_API_KEY
+#     #     openai.organization = OPENAI_GROUP_ID
+#     openai.api_key = OPENAI_API_KEY
+#     openai.organization = OPENAI_GROUP_ID
 
+base_url="https://opus.gptuu.com/v1"
+_key = "sk-pcZgpOH8K3nWVbMWsgKEM9EcAgma6LsoiBhYthjSyMhjVl44"
+DEFAULT_CLIENT = openai.OpenAI(api_key=_key, base_url=base_url, timeout=30)
 
 # def ask_completion(model, batch, temperature, max_tokens):
 #     response = openai.Completion.create(
@@ -42,6 +45,7 @@ def ask_chat(model, messages: list, temperature, n, max_tokens):
     print('>>>model:', model)
     print('>>>max_tokens:', max_tokens)
     if model == LLM.GPT_o1:
+        raise Exception("GPT-o1 is not supported")
         response = openai.ChatCompletion.create(
             model=model,
             messages=messages,
@@ -50,13 +54,14 @@ def ask_chat(model, messages: list, temperature, n, max_tokens):
             n=n
         )
     else:
-        response = openai.ChatCompletion.create(
+        response = DEFAULT_CLIENT.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             n=n
         )
+        response = json.loads(response.model_dump_json())
     response_clean = [choice["message"]["content"] for choice in response["choices"]]
     return dict(
         response=response_clean,
@@ -103,7 +108,7 @@ def ask_llm(model: str, batch: list, temperature: float, n:int, max_tokens):
         messages = [{"role": "user", "content": batch[0]}]
         response = ask_chat(model, messages, temperature, n, max_tokens)
         response['response'] = [response['response']]  # hard-code for batch_size=1
-    except (openai.error.RateLimitError, json.decoder.JSONDecodeError, Exception) as e:
+    except (openai.RateLimitError, json.decoder.JSONDecodeError, Exception) as e:
         print(f"Error occurred: {e}")
         # Return hard-coded response
         response = {"total_tokens": 0, "response": [["SELECT" for _ in range(n)]]}

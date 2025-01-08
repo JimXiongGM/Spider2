@@ -1,19 +1,18 @@
-#coding=utf8
-from typing import Dict, List
-from typing import Any, Union, Optional
-import shutil
+# coding=utf8
 import os
+import shutil
+from typing import Any, Dict, List, Optional, Union
 
 
-def download_and_execute_setup(controller, url: str, path: str = '/home/user/init.sh'):
-    """ Download a script from a remote url and execute it to setup the environment.
+def download_and_execute_setup(controller, url: str, path: str = "/home/user/init.sh"):
+    """Download a script from a remote url and execute it to setup the environment.
     @args:
         controller(desktop_env.controllers.SetupController): the controller object
         url(str): remote url to download the script
         path(str): the path to save the script on VM (default: '~/init.sh')
     """
     # download the script
-    controller._download_setup([{'url': url, 'path': path}])
+    controller._download_setup([{"url": url, "path": path}])
     # execute the script
     controller._execute_setup(command=f"chmod a+x {path}")
     controller._execute_setup(command=f"bash {path}")
@@ -21,15 +20,16 @@ def download_and_execute_setup(controller, url: str, path: str = '/home/user/ini
     controller._execute_setup(command=f"rm -rf  __MACOSX")
     return
 
-def download_and_unzip_setup(controller, url: str, path: str = '/home/user/gold.zip'):
-    """ Download a script from a remote url and execute it to setup the environment.
+
+def download_and_unzip_setup(controller, url: str, path: str = "/home/user/gold.zip"):
+    """Download a script from a remote url and execute it to setup the environment.
     @args:
         controller(desktop_env.controllers.SetupController): the controller object
         url(str): remote url to download the script
         path(str): the path to save the script on VM (default: '~/init.sh')
     """
     # download the script
-    controller._download_setup([{'url': url, 'path': path}])
+    controller._download_setup([{"url": url, "path": path}])
     # execute the script
     controller._execute_setup(command=f"chmod a+x {path}")
     controller._execute_setup(command=f"unzip {path}")
@@ -39,8 +39,9 @@ def download_and_unzip_setup(controller, url: str, path: str = '/home/user/gold.
     controller._execute_setup(command=f"chmod -R a+rwx .")
     return
 
-def download_setup(controller, url: str, path: str = '/home/user/gold.zip'):
-    """ Download a script from a remote url and execute it to setup the environment.
+
+def download_setup(controller, url: str, path: str = "/home/user/gold.zip"):
+    """Download a script from a remote url and execute it to setup the environment.
     @args:
         controller(desktop_env.controllers.SetupController): the controller object
         url(str): remote url to download the script
@@ -51,10 +52,9 @@ def download_setup(controller, url: str, path: str = '/home/user/gold.zip'):
     return
 
 
-
-def copy_execute_setup(controller, url: str, path: str = '/home/user/init.sh'):
+def copy_execute_setup(controller, url: str, path: str = "/home/user/init.sh"):
     mnt_dir = controller.mnt_dir
-    work_dir = '/workspace'
+    work_dir = "/workspace"
     real_path = path.replace(work_dir, mnt_dir)
     os.makedirs(os.path.dirname(real_path), exist_ok=True)
     shutil.copy2(url, real_path)
@@ -62,18 +62,18 @@ def copy_execute_setup(controller, url: str, path: str = '/home/user/init.sh'):
     controller._execute_setup(command=f"bash {path}")
     controller._execute_setup(command=f"rm -f {path}")
     controller._execute_setup(command=f"rm -rf  __MACOSX")
-    return    
+    return
 
 
 def copy_setup(controller, files: List[Dict[str, str]]):
     mnt_dir = controller.mnt_dir
-    work_dir = '/workspace'
-    
-    for file in files:    
-        url = file['url']
-        v_path = file['path']
+    work_dir = "/workspace"
+
+    for file in files:
+        url = file["url"]
+        v_path = file["path"]
         path = v_path.replace(work_dir, mnt_dir)
-        
+
         if os.path.isfile(url):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             shutil.copy2(url, path)
@@ -82,6 +82,7 @@ def copy_setup(controller, files: List[Dict[str, str]]):
         else:
             print(f"Warning: {url} is neither a file nor a directory.")
     return
+
 
 def copy_all_subfiles_setup(controller, dirs: List[str]):
 

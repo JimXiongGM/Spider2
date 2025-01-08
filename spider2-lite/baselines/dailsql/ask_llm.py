@@ -8,9 +8,15 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from multiprocessing import Pool, set_start_method
 
-from llm.chatgpt import init_chatgpt, ask_llm
+from llm.chatgpt import ask_llm
 from utils.enums import LLM
 from utils.post_process import process_duplication, get_sqls
+
+def load_sqlite_db_names():
+    with open("spider2_SQLite_db_names.json", "r") as f:
+        db_names = json.load(f)
+    db_names = [item.lower().replace("-", "_") for item in db_names]
+    return set(db_names)
 
 
 def process_batch(batch, submit_folder, db_ids, args, i, 
@@ -18,8 +24,8 @@ def process_batch(batch, submit_folder, db_ids, args, i,
     """Function to process each batch in parallel."""
 
     # cost recorded
-    os.makedirs(os.path.join(submit_folder, "../cost"), exist_ok=True)
-    with open(os.path.join(submit_folder, "../cost", f"{batch['instance_id'][0]}.json"), "w") as submit_file:
+    os.makedirs(os.path.join(submit_folder, "cost"), exist_ok=True)
+    with open(os.path.join(submit_folder, "cost", f"{batch['instance_id'][0]}.json"), "w") as submit_file:
         prompt = batch["prompt"][0]
         prompt_tokens = len(tiktoken.get_encoding("cl100k_base").encode(prompt))
         json.dump(
@@ -29,11 +35,6 @@ def process_batch(batch, submit_folder, db_ids, args, i,
                 "cost": prompt_tokens * 5e-6  # USD
             },
             submit_file)
-
-    # return  # count cost only
-
-    # init openai api
-    init_chatgpt(args.openai_api_key, args.openai_group_id, args.model)
 
     if args.post_mode == 'consistency-from-generated-pass@n':  # load the saved sql from the output of pass@n
         cur_db_ids = db_ids[i * args.batch_size: (i+1) * args.batch_size]
@@ -57,7 +58,7 @@ def process_batch(batch, submit_folder, db_ids, args, i,
 
     try:
         res = ask_llm(args.model, batch["prompt"], args.temperature, args.n, args.max_tokens)
-    except openai.error.InvalidRequestError:
+    except openai.BadRequestError:
         print(f"The {i}-th question has too much tokens! Return \"SELECT\" instead")
         res = {"response": [["SELECT" for _ in range(args.n)]]}  # hard-code for batch_size=1
 
@@ -70,7 +71,6 @@ def process_batch(batch, submit_folder, db_ids, args, i,
         with open(os.path.join(submit_folder, f"{instance_id}@0.sql"), "w") as submit_file:
             submit_file.write(sql)
     else:
-        results = []
         cur_db_ids = db_ids[i * args.batch_size: (i+1) * args.batch_size]
         for sqls, db_id, instance_id in zip(res["response"], cur_db_ids, batch["instance_id"]):  # dummy loop, only excute once
             processed_sqls = []
@@ -102,7 +102,7 @@ def process_batch(batch, submit_folder, db_ids, args, i,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--question", type=str)
-    parser.add_argument("--openai_api_key", type=str)
+    parser.add_argument("--openai_api_key", type=str,default=None)
     parser.add_argument("--openai_group_id", type=str, default=None)
     parser.add_argument("--model", type=str, choices=[LLM.TEXT_DAVINCI_003, 
                                                       LLM.GPT_35_TURBO,
@@ -117,7 +117,7 @@ if __name__ == '__main__':
     parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--n", type=int, default=1)
-    parser.add_argument("--db_dir", type=str, default="../../resource/databases/spider2-localdb")
+    parser.add_argument("--db_dir", type=str, default="resource/databases/spider2-localdb")
     parser.add_argument('--max_tokens', type=int, default=1000)
     parser.add_argument('--post_mode', type=str, choices=['pass@n', 'consistency@n', 'consistency-from-generated-pass@n', None], default=None)
     parser.add_argument("--is_sql_debug", action="store_true", default=False)
@@ -142,23 +142,37 @@ if __name__ == '__main__':
     os.makedirs(submit_folder, exist_ok=True)
 
     if args.override:
-        pred_ids = set()
+        skip_ids = set()
     else:
-        pred_ids = [file.split(".")[0].split("@")[0] for file in os.listdir(submit_folder) if file.endswith(".sql")]
-        pred_ids = set(pred_ids)
+        skip_ids = [file.split(".")[0].split("@")[0] for file in os.listdir(submit_folder) if file.endswith(".sql")]
+        skip_ids = set(skip_ids)
+    
     questions_json = json.load(open(os.path.join(args.question, QUESTION_FILE), "r"))
+
+    # only keep data in sqlite
+    sqlite_db_names = load_sqlite_db_names()
+    questions_json["questions"] = [item for item in questions_json["questions"] if item["db_id"].lower().replace("-", "_") in sqlite_db_names]
+
     questions = [{"prompt": item["prompt"], "instance_id": item["instance_id"]} for item in questions_json["questions"] \
-        if item["instance_id"] not in pred_ids]
+        if item["instance_id"] not in skip_ids]
+   
     db_ids = [item["db_id"] for item in questions_json["questions"] \
-        if item["instance_id"] not in pred_ids]
+        if item["instance_id"] not in skip_ids]
 
     question_loader = DataLoader(questions, batch_size=args.batch_size, shuffle=False, drop_last=False)
 
     set_start_method('spawn', force=True)  # Ensures that the correct start method is used for multiprocessing
 
+    # debug
+    # question_loader = question_loader[:10]
+    # for item in question_loader:
+    #     process_batch(item, submit_folder, db_ids, args, 0, 
+    #         args.openai_api_key, args.openai_group_id, args.model)
+    # exit()
+
     token_cnt = 0
-    with Pool(processes=args.processes) as pool:
-        with tqdm(total=len(question_loader)) as pbar:
+    with Pool(processes=8) as pool:
+        with tqdm(total=len(question_loader),ncols=100,desc="Processing questions") as pbar:
             for _ in pool.starmap(process_batch, [
                 (
                     batch, submit_folder, db_ids, args, i, 

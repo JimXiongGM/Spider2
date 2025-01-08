@@ -4,18 +4,13 @@ import json
 import os
 import os.path as osp
 import spacy
-import requests
 import argparse
-from datetime import date
-import sys
-import glob
 import matplotlib.pyplot as plt
 import re
 
-proj_dir = osp.dirname(osp.dirname(osp.abspath(__file__)))
-sys.path = [osp.join(proj_dir, '../')] + sys.path
+proj_dir = "./"
 
-from utils.utils import walk_metadata, get_special_function_summary\
+from baseline_utils.utils import walk_metadata, get_special_function_summary
 
 def read_jsonl(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -73,9 +68,6 @@ def process_table_json(args, proj_dir):
     #     json.dump([db_stats_list[5]], json_file, indent=4, ensure_ascii=False)
 
 
-
-
-
 def process_dev_json(args, proj_dir):
     def get_questionTok_and_gold_query_for_dev_json(data):
         nlp = spacy.load("en_core_web_sm")
@@ -87,7 +79,7 @@ def process_dev_json(args, proj_dir):
             item['question_toks'] = [token.text for token in doc]
 
             # step2. 
-            gold_sql_file = osp.join(proj_dir, f"../../evaluation_suite/gold/sql/{item['instance_id']}.sql")
+            gold_sql_file = osp.join(proj_dir, f"evaluation_suite/gold/sql/{item['instance_id']}.sql")
             if not os.path.exists(gold_sql_file):
                 item['query'] = ''
             else:
@@ -102,7 +94,7 @@ def process_dev_json(args, proj_dir):
     with open(osp.join(proj_dir, f"preprocessed_data/{args.dev}/tables_preprocessed.json"), "r", encoding="utf-8") as json_file:
         table_json = json.load(json_file)
 
-    data = read_jsonl(osp.join(proj_dir, f'../../{args.dev}.jsonl'))
+    data = read_jsonl(osp.join(proj_dir, f'{args.dev}.jsonl'))
     data = get_questionTok_and_gold_query_for_dev_json(data)
     data = get_special_function_summary(data)
 

@@ -1,21 +1,17 @@
 import glob
 import json
-import pickle
 import os
 import os.path as osp
-import numpy as np
-from datetime import date
-import argparse
 import matplotlib.pyplot as plt
 
-proj_dir = osp.dirname(osp.abspath(__file__))
+proj_dir = "./"
 
 def read_jsonl(file_path):
     with open(file_path, 'r', encoding='utf-8') as file:
         return [json.loads(line) for line in file]
 
 def get_special_function_summary(data):
-    with open(osp.join(proj_dir, '../../resource/syntax/bigquery_functions/bigquery_functions.json'), 'r', encoding='utf-8') as file:
+    with open(osp.join(proj_dir, 'resource/syntax/bigquery_functions/bigquery_functions.json'), 'r', encoding='utf-8') as file:
         bigquery_functions = json.load(file)
 
     function_summaries = {}
@@ -45,7 +41,7 @@ def column_description_length_histogram():
     '''
     1106 status: deprecated. should be compatible with the new metadata format.
     '''
-    json_path = "../../databases/bigquery/metadata/bigquery-public-data/**/*.json"
+    json_path = "databases/bigquery/metadata/bigquery-public-data/**/*.json"
 
     description_lengths = []
 
@@ -126,28 +122,32 @@ def db_stats_bar_chart(db_stats_list):
         label.set_ha('right')
 
     plt.tight_layout()
-    # plt.show()
-    # plt.savefig(osp.join(proj_dir, 'db_statistic.png'))
-
-
+    plt.show()
+    plt.savefig(osp.join(proj_dir, 'db_statistic.png'))
 
 def walk_metadata(dev):
 
-    dev_data = read_jsonl(osp.join(proj_dir, f'../../{dev}.jsonl'))
+    dev_data = read_jsonl(osp.join(proj_dir, f'{dev}.jsonl'))
         
     required_db_ids = set([item['db'] for item in dev_data])
   
+    # NOTE: 默认是全开的
     # currently supporting only bigquery, sqlite and snowflake
-    db_base_paths = ["../../resource/databases/bigquery/", "../../resource/databases/sqlite/", "../../resource/databases/snowflake/"]
+    db_base_paths = [
+        "resource/databases/bigquery/",
+        "resource/databases/sqlite/",
+        "resource/databases/snowflake/"
+        ]
     json_glob_path = "**/*.json"
 
     db_stats_list = []
     for base_path in db_base_paths:
-        for db_path in glob.glob(os.path.join(base_path, "*"), recursive=False):
+        paths = glob.glob(os.path.join(base_path, "*"), recursive=False)
+        for db_path in paths:
 
             db_id = os.path.basename(os.path.normpath(db_path)) 
             if db_id not in required_db_ids:
-                    continue
+                continue
 
             table_count = 0
             total_column_count = 0
@@ -209,7 +209,7 @@ def walk_metadata(dev):
             # else:
             #     raise ValueError(f"Unknown database type: {base_path}")
 
-            db_stats_list.append({
+            _item = {
                 "db_id": db_id,
                 "db_stats": {
                     "No. of tables": table_count,
@@ -224,11 +224,12 @@ def walk_metadata(dev):
                 "primary_keys": [], 
                 "foreign_keys": [],  
                 "table_to_projDataset": table_to_projDataset
-            })
+            }
+            db_stats_list.append(_item)
 
 
     db_stats(db_stats_list)
-    db_stats_bar_chart(db_stats_list)
+    # db_stats_bar_chart(db_stats_list)
     return db_stats_list
 
 
