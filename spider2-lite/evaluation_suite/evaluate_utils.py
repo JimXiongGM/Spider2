@@ -1,24 +1,25 @@
 # import debugpy; debugpy.connect(('127.0.0.1', 5688))
 import json
-import re
+# import re
 import pandas as pd
 import math
-import duckdb
-from typing import List, Union
+# import duckdb
+# from typing import List, Union
 import os
-import os.path as osp
+# import os.path as osp
 import pandas as pd
 import argparse
 from google.cloud import bigquery
-from google.cloud.bigquery import QueryJobConfig
+# from google.cloud.bigquery import QueryJobConfig
 import shutil
 import sqlite3
-from tqdm import tqdm
+# from tqdm import tqdm
 import signal
 import snowflake.connector
 
 
 # ---------- timeout --------------
+
 class TimeoutException(Exception):
     pass
 
@@ -38,6 +39,7 @@ def run_with_timeout(func, timeout, *args, **kwargs):
         return None
     finally:
         signal.alarm(0) 
+
 # ---------- timeout --------------
 
 
@@ -58,7 +60,7 @@ def load_json_list_to_dict(json_file_path):
 
 
 def compare_multi_pandas_table(pred, multi_gold, multi_condition_cols=[], multi_ignore_order=False):
-    print('multi_condition_cols', multi_condition_cols)
+    # print('multi_condition_cols', multi_condition_cols)
 
     if multi_condition_cols == [] or multi_condition_cols == [[]] or multi_condition_cols == [None] or multi_condition_cols == None:
         multi_condition_cols = [[] for _ in range(len(multi_gold))]
@@ -82,7 +84,7 @@ def compare_pandas_table(pred, gold, condition_cols=[], ignore_order=False):
         ignore_order (bool, optional): _description_. Defaults to False.
 
     """
-    print('condition_cols', condition_cols)
+    # print('condition_cols', condition_cols)
     
     tolerance = 1e-2
 
@@ -205,7 +207,7 @@ def get_sqlite_result(db_path, query, save_dir=None, file_name="result.csv", chu
             return True, df
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        # print(f"An error occurred: {e}")
         return False, str(e)
 
     finally:
